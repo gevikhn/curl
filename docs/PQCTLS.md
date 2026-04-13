@@ -13,6 +13,8 @@ through the CMake build.
 For the generic CMake build flow, see [INSTALL-CMAKE.md](INSTALL-CMAKE.md).
 This document focuses on the extra pieces needed to build and use curl with
 PQCTLS.
+For downstream maintenance guidance, see
+[PQCTLS-MAINTAINING.md](PQCTLS-MAINTAINING.md).
 
 ## Prerequisites
 

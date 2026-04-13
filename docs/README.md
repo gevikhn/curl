@@ -17,5 +17,5 @@ curl website's [documentation section](https://curl.se/docs/) for
 general curl stuff or the [libcurl section](https://curl.se/libcurl/) for
 libcurl related documentation.
 
-Backend-specific notes in this directory include [RUSTLS.md](RUSTLS.md) and
-[PQCTLS.md](PQCTLS.md).
+Backend-specific notes in this directory include [RUSTLS.md](RUSTLS.md),
+[PQCTLS.md](PQCTLS.md), and [PQCTLS-MAINTAINING.md](PQCTLS-MAINTAINING.md).
