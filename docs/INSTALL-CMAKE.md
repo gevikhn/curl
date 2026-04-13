@@ -78,6 +78,81 @@ CMake also comes with a Qt based GUI called `cmake-gui`. To configure with
    Once you have selected all the options you want, click the "Generate"
    button.
 
+## Building with PQCTLS
+
+curl can be built with the PQCTLS backend using the pqctls C API wrapper.
+This backend is currently intended for client-side use and is configured only
+via the CMake build.
+
+For a dedicated PQCTLS build and usage guide, see [PQCTLS.md](PQCTLS.md).
+
+The PQCTLS build expects a manually prepared install prefix containing:
+
+- `include/pqctls_capi.h`
+- `lib/libpqctls_capi.a`
+- `lib/libpqctls_handshake.a`
+- `lib/libpqctls_codec.a`
+- `lib/libpqctls_crypto.a`
+- `lib/libpqc_certs.a`
+
+You also need the Tongsuo/OpenSSL installation used by pqctls so the build can
+link `libcrypto`.
+
+Example configuration:
+
+```sh
+cmake -B ../curl-build-pqctls \
+  -DCURL_USE_PQCTLS=ON \
+  -DCURL_USE_OPENSSL=OFF \
+  -DPQCTLS_ROOT_DIR=/path/to/pqctls-prefix \
+  -DPQCTLS_TONGSUO_DIR=/path/to/tongsuo-install \
+  -DCURL_USE_LIBPSL=OFF
+```
+
+Then build normally:
+
+```sh
+cmake --build ../curl-build-pqctls
+```
+
+If you build with multiple TLS backends and want PQCTLS to be the default one,
+set this at configure time:
+
+```sh
+-DCURL_DEFAULT_SSL_BACKEND=pqctls
+```
+
+In a MultiSSL build, you can also select PQCTLS at runtime with:
+
+```sh
+export CURL_SSL_BACKEND=pqctls
+```
+
+In a MultiSSL build, `curl --version` reports the enabled TLS backends in the
+`libcurl` line. When PQCTLS is the selected backend, the output includes a
+`pqctls/...` version string there. `CURL_SSL_BACKEND` overrides the configure-
+time default backend selection.
+
+When using the PQCTLS backend, certificate inputs are expected to be PQCTLS
+binary files such as `root_cert.bin`, `client_cert.bin` and `client_sk.bin`,
+not PEM files. A typical command line looks like this:
+
+```sh
+curl \
+  --noproxy '*' \
+  --cacert /path/to/root_cert.bin \
+  --cert /path/to/client_cert.bin \
+  --key /path/to/client_sk.bin \
+  https://127.0.0.1:9000/size/1024
+```
+
+The `--noproxy '*'` option is recommended for local validation to avoid
+shell proxy environment variables (such as `https_proxy`) from tunneling the
+request through an unrelated HTTP proxy.
+
+To switch the backend algorithm at runtime, set `PQCTLS_ALGORITHM=sm2`
+before starting curl. The default is `ecdsa`.
+
 # Building
 
 Build (you have to specify the build directory).
@@ -205,7 +280,7 @@ target_link_libraries(my_target PRIVATE CURL::libcurl)
 - `CURL_COMPLETION_ZSH_DIR`:                Custom zsh completion install directory.
 - `CURL_DEFAULT_SSL_BACKEND`:               Override default TLS backend in MultiSSL builds.
                                             Accepted values in order of default priority:
-                                            `wolfssl`, `gnutls`, `mbedtls`, `openssl`, `schannel`, `rustls`
+                                            `wolfssl`, `gnutls`, `mbedtls`, `rustls`, `pqctls`, `openssl`, `schannel`
 - `CURL_DROP_UNUSED`:                       Drop unused code and data from built binaries. Default: `OFF`
 - `CURL_ENABLE_EXPORT_TARGET`:              Enable CMake export target. Default: `ON`
 - `CURL_GCC_ANALYZER`:                      Enable GCC `--analyzer` option. Default: `OFF`
@@ -357,6 +432,7 @@ Details via CMake
 - `CURL_USE_LIBUV`:                         Use libuv for event-based tests. Default: `OFF`
 - `CURL_USE_MBEDTLS`:                       Enable mbedTLS for SSL/TLS. Default: `OFF`
 - `CURL_USE_OPENSSL`:                       Enable OpenSSL for SSL/TLS. Default: `ON` if no other TLS backend was enabled.
+- `CURL_USE_PQCTLS`:                        Enable PQCTLS for post-quantum SSL/TLS. Default: `OFF`
 - `CURL_USE_PKGCONFIG`:                     Enable `pkg-config` to detect dependencies.
                                             Default: `ON` for Unix (except Android, Apple devices), vcpkg, MinGW if not cross-compiling.
 - `CURL_USE_RUSTLS`:                        Enable Rustls for SSL/TLS (experimental). Default: `OFF`
@@ -379,6 +455,9 @@ Details via CMake
 - `OPENSSL_CRYPTO_LIBRARY`:                 Absolute path to `crypto` library.
                                             With MSVC, CMake uses variables `LIB_EAY_DEBUG`/`LIB_EAY_RELEASE` instead.
 - `OPENSSL_USE_STATIC_LIBS`:                Look for static OpenSSL libraries.
+- `PQCTLS_ROOT_DIR`:                        Absolute path to the pqctls install prefix.
+                                            The prefix must contain `include/pqctls_capi.h` and `lib/libpqctls_capi.a`.
+- `PQCTLS_TONGSUO_DIR`:                     Absolute path to the Tongsuo/OpenSSL installation used by pqctls.
 - `ZLIB_INCLUDE_DIR`:                       Absolute path to zlib include directory.
 - `ZLIB_LIBRARY`:                           Absolute path to `zlib` library.
 - `ZLIB_USE_STATIC_LIBS`:                   Look for static `zlib` library (requires CMake v3.24).

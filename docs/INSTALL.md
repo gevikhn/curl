@@ -151,6 +151,12 @@ These options are provided to select the TLS backend to use.
 - Schannel: `--with-schannel`
 - wolfSSL: `--with-wolfssl`
 
+PQCTLS is currently only available in the CMake build and is not exposed via
+an autotools `./configure` option. To build curl with PQCTLS, use the CMake
+options `CURL_USE_PQCTLS`, `PQCTLS_ROOT_DIR` and `PQCTLS_TONGSUO_DIR` as
+described in `docs/INSTALL-CMAKE.md`. For a dedicated PQCTLS guide, see
+[PQCTLS.md](PQCTLS.md).
+
 You can build curl with *multiple* TLS backends at your choice, but some TLS
 backends cannot be combined: if you build with an OpenSSL fork (or wolfSSL),
 you cannot add another OpenSSL fork (or wolfSSL) because they have
