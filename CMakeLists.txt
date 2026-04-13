@@ -740,13 +740,15 @@ cmake_dependent_option(CURL_USE_MBEDTLS "Enable mbedTLS for SSL/TLS" OFF CURL_EN
 cmake_dependent_option(CURL_USE_WOLFSSL "Enable wolfSSL for SSL/TLS" OFF CURL_ENABLE_SSL OFF)
 cmake_dependent_option(CURL_USE_GNUTLS "Enable GnuTLS for SSL/TLS" OFF CURL_ENABLE_SSL OFF)
 cmake_dependent_option(CURL_USE_RUSTLS "Enable Rustls for SSL/TLS (experimental)" OFF CURL_ENABLE_SSL OFF)
+cmake_dependent_option(CURL_USE_PQCTLS "Enable PQCTLS for post-quantum SSL/TLS" OFF CURL_ENABLE_SSL OFF)
 
 if(WIN32 OR
    CURL_USE_SCHANNEL OR
    CURL_USE_MBEDTLS OR
    CURL_USE_WOLFSSL OR
    CURL_USE_GNUTLS OR
-   CURL_USE_RUSTLS)
+   CURL_USE_RUSTLS OR
+   CURL_USE_PQCTLS)
   set(_openssl_default OFF)
 else()
   set(_openssl_default ON)
@@ -761,6 +763,7 @@ curl_count_true(_enabled_ssl_options_count
   CURL_USE_WOLFSSL
   CURL_USE_GNUTLS
   CURL_USE_RUSTLS
+  CURL_USE_PQCTLS
 )
 if(_enabled_ssl_options_count GREATER 1)
   set(CURL_WITH_MULTI_SSL ON)
@@ -967,6 +970,48 @@ if(CURL_USE_RUSTLS)
   endif()
 
   if(CURL_DEFAULT_SSL_BACKEND AND CURL_DEFAULT_SSL_BACKEND STREQUAL "rustls")
+    set(_valid_default_ssl_backend TRUE)
+  endif()
+  set(_curl_ca_bundle_supported TRUE)
+endif()
+
+if(CURL_USE_PQCTLS)
+  set(PQCTLS_ROOT_DIR "" CACHE PATH "Path to pqctls install prefix")
+  if(NOT PQCTLS_ROOT_DIR)
+    message(FATAL_ERROR "CURL_USE_PQCTLS requires PQCTLS_ROOT_DIR to be set")
+  endif()
+  set(_ssl_enabled ON)
+  set(USE_PQCTLS ON)
+
+  # Find pqctls_capi headers and library
+  find_path(PQCTLS_INCLUDE_DIR NAMES pqctls_capi.h PATHS "${PQCTLS_ROOT_DIR}/include" NO_DEFAULT_PATH)
+  find_library(PQCTLS_LIBRARY NAMES pqctls_capi PATHS "${PQCTLS_ROOT_DIR}/lib" NO_DEFAULT_PATH)
+
+  if(NOT PQCTLS_INCLUDE_DIR OR NOT PQCTLS_LIBRARY)
+    message(FATAL_ERROR "Could not find pqctls_capi in PQCTLS_ROOT_DIR=${PQCTLS_ROOT_DIR}. "
+                        "Set PQCTLS_ROOT_DIR to the install prefix containing include/pqctls_capi.h and lib/libpqctls_capi.a")
+  endif()
+
+  include_directories(${PQCTLS_INCLUDE_DIR})
+  list(APPEND CURL_LIBS ${PQCTLS_LIBRARY})
+
+  # pqctls_capi depends on pqctls C++ libs, Tongsuo/OpenSSL, and libstdc++
+  set(PQCTLS_TONGSUO_DIR "" CACHE PATH "Path to Tongsuo/OpenSSL install prefix for pqctls")
+  foreach(_deplib pqctls_handshake pqctls_codec pqctls_crypto pqc_certs)
+    find_library(PQCTLS_${_deplib} NAMES ${_deplib} PATHS "${PQCTLS_ROOT_DIR}/lib" NO_DEFAULT_PATH)
+    if(PQCTLS_${_deplib})
+      list(APPEND CURL_LIBS ${PQCTLS_${_deplib}})
+    endif()
+  endforeach()
+  if(PQCTLS_TONGSUO_DIR)
+    find_library(PQCTLS_CRYPTO_LIB NAMES crypto PATHS "${PQCTLS_TONGSUO_DIR}/lib64" "${PQCTLS_TONGSUO_DIR}/lib" NO_DEFAULT_PATH)
+    if(PQCTLS_CRYPTO_LIB)
+      list(APPEND CURL_LIBS ${PQCTLS_CRYPTO_LIB})
+    endif()
+  endif()
+  list(APPEND CURL_LIBS stdc++)
+
+  if(CURL_DEFAULT_SSL_BACKEND AND CURL_DEFAULT_SSL_BACKEND STREQUAL "pqctls")
     set(_valid_default_ssl_backend TRUE)
   endif()
   set(_curl_ca_bundle_supported TRUE)
@@ -2093,6 +2138,7 @@ curl_add_if("mbedTLS"          _ssl_enabled AND USE_MBEDTLS)
 curl_add_if("wolfSSL"          _ssl_enabled AND USE_WOLFSSL)
 curl_add_if("GnuTLS"           _ssl_enabled AND USE_GNUTLS)
 curl_add_if("Rustls"           _ssl_enabled AND USE_RUSTLS)
+curl_add_if("PQCTLS"           _ssl_enabled AND USE_PQCTLS)
 
 if(_items)
   list(SORT _items CASE INSENSITIVE)
