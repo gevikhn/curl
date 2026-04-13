@@ -58,6 +58,7 @@
 #include "vtls/schannel.h"       /* Schannel SSPI version */
 #include "vtls/mbedtls.h"        /* mbedTLS versions */
 #include "vtls/rustls.h"         /* Rustls versions */
+#include "vtls/pqctls.h"         /* PQCTLS versions */
 
 #include "slist.h"
 #include "curl_trc.h"
@@ -697,6 +698,8 @@ const struct Curl_ssl *Curl_ssl =
   &Curl_ssl_mbedtls;
 #elif defined(USE_RUSTLS)
   &Curl_ssl_rustls;
+#elif defined(USE_PQCTLS)
+  &Curl_ssl_pqctls;
 #elif defined(USE_OPENSSL)
   &Curl_ssl_openssl;
 #elif defined(USE_SCHANNEL)
@@ -723,6 +726,9 @@ static const struct Curl_ssl *available_backends[] = {
 #endif
 #ifdef USE_RUSTLS
   &Curl_ssl_rustls,
+#endif
+#ifdef USE_PQCTLS
+  &Curl_ssl_pqctls,
 #endif
   NULL
 };
