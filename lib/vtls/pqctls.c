@@ -48,6 +48,40 @@ static CURLcode pq_map_error(int rc)
   }
 }
 
+static void pq_refresh_data_pending(struct pqctls_ssl_backend_data *backend)
+{
+  backend->data_in_pending =
+    (backend->session && pqctls_pending(backend->session) > 0) ? TRUE : FALSE;
+}
+
+static CURLcode pq_flush_pending_write(struct ssl_connect_data *connssl,
+                                       struct Curl_easy *data,
+                                       struct pqctls_ssl_backend_data *backend)
+{
+  size_t flushed = 0;
+  int rc;
+
+  if(!backend->session || !pqctls_want_write(backend->session))
+    return CURLE_OK;
+
+  rc = pqctls_write(backend->session, NULL, 0, &flushed);
+  (void)flushed;
+  if(rc == PQCTLS_OK) {
+    if(pqctls_want_write(backend->session)) {
+      connssl->io_need = CURL_SSL_IO_NEED_SEND;
+      return CURLE_AGAIN;
+    }
+    return CURLE_OK;
+  }
+  if(rc == PQCTLS_AGAIN) {
+    connssl->io_need = CURL_SSL_IO_NEED_SEND;
+    return CURLE_AGAIN;
+  }
+
+  failf(data, "pqctls_write flush: %s", pqctls_strerror(rc));
+  return pq_map_error(rc);
+}
+
 /* -- recv ------------------------------------------------------------ */
 
 static CURLcode pq_recv(struct Curl_cfilter *cf, struct Curl_easy *data,
@@ -57,23 +91,32 @@ static CURLcode pq_recv(struct Curl_cfilter *cf, struct Curl_easy *data,
   struct pqctls_ssl_backend_data *backend =
     (struct pqctls_ssl_backend_data *)connssl->backend;
   int rc;
+  CURLcode result;
 
-  (void)data;
   DEBUGASSERT(backend && backend->session);
   *pnread = 0;
+  connssl->io_need = CURL_SSL_IO_NEED_NONE;
+
+  result = pq_flush_pending_write(connssl, data, backend);
+  if(result != CURLE_OK) {
+    backend->data_in_pending = FALSE;
+    return result;
+  }
 
   rc = pqctls_read(backend->session, buf, len, pnread);
   if(rc == PQCTLS_OK && *pnread > 0) {
-    backend->data_in_pending =
-      (pqctls_pending(backend->session) > 0) ? TRUE : FALSE;
+    pq_refresh_data_pending(backend);
     return CURLE_OK;
   }
   if(rc == PQCTLS_AGAIN) {
     backend->data_in_pending = FALSE;
+    connssl->io_need = pqctls_want_write(backend->session) ?
+      CURL_SSL_IO_NEED_SEND : CURL_SSL_IO_NEED_RECV;
     return CURLE_AGAIN;
   }
   if(rc == PQCTLS_ERR_CLOSED) {
     connssl->peer_closed = TRUE;
+    connssl->io_need = CURL_SSL_IO_NEED_NONE;
     return CURLE_OK;
   }
   failf(data, "pqctls_read: %s", pqctls_strerror(rc));
@@ -90,15 +133,20 @@ static CURLcode pq_send(struct Curl_cfilter *cf, struct Curl_easy *data,
     (struct pqctls_ssl_backend_data *)connssl->backend;
   int rc;
 
-  (void)data;
   DEBUGASSERT(backend && backend->session);
   *pnwritten = 0;
+  connssl->io_need = CURL_SSL_IO_NEED_NONE;
 
   rc = pqctls_write(backend->session, buf, len, pnwritten);
-  if(rc == PQCTLS_OK)
+  if(rc == PQCTLS_OK) {
+    if(pqctls_want_write(backend->session))
+      connssl->io_need = CURL_SSL_IO_NEED_SEND;
     return CURLE_OK;
-  if(rc == PQCTLS_AGAIN)
+  }
+  if(rc == PQCTLS_AGAIN) {
+    connssl->io_need = CURL_SSL_IO_NEED_SEND;
     return CURLE_AGAIN;
+  }
   failf(data, "pqctls_write: %s", pqctls_strerror(rc));
   return pq_map_error(rc);
 }
@@ -113,6 +161,8 @@ static bool pq_data_pending(struct Curl_cfilter *cf,
     (struct pqctls_ssl_backend_data *)connssl->backend;
   (void)data;
   DEBUGASSERT(backend);
+  if(backend->session && pqctls_pending(backend->session) > 0)
+    backend->data_in_pending = TRUE;
   return (bool)backend->data_in_pending;
 }
 
@@ -237,6 +287,7 @@ static CURLcode pq_connect(struct Curl_cfilter *cf, struct Curl_easy *data,
   }
 
   connssl->state = ssl_connection_complete;
+  connssl->io_need = CURL_SSL_IO_NEED_NONE;
   *done = TRUE;
 
   {
